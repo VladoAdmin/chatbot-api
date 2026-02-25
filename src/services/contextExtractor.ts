@@ -11,31 +11,41 @@ export interface ExtractedContext {
 }
 
 export async function extractContext(message: string): Promise<ExtractedContext> {
-  const system =
-    "Extract context from a Slovak grant-seeking message. Reply ONLY valid JSON with keys: sektor, region, typ_projektu, velkost_firmy, keywords (array). Use null for unknown.";
-
+  // Rýchla heuristika pre bežné sektory
+  const lower = message.toLowerCase();
+  const context: ExtractedContext = {};
+  
+  if (lower.includes("poľnohospodár") || lower.includes("agro") || lower.includes("farm")) {
+    context.sektor = "poľnohospodárstvo";
+    context.keywords = ["poľnohospodárstvo", "agro"];
+  }
+  if (lower.includes("it ") || lower.includes("digital") || lower.includes("technol")) {
+    context.sektor = "IT";
+    context.keywords = ["digitalizácia", "IT"];
+  }
+  if (lower.includes("bratislava")) context.region = "Bratislavský";
+  if (lower.includes("košice")) context.region = "Košický";
+  if (lower.includes("žiarna")) context.region = "Žilinský";
+  
+  // Ak máme už základ, vrátime okamžite (bez Ollama)
+  if (context.sektor || context.region) {
+    console.log("[contextExtractor] Fast heuristic match:", context);
+    return context;
+  }
+  
+  // Inak použijeme Ollama ale s krátkym timeoutom
   try {
+    const system = "Extract JSON with keys: sektor, region, typ_projektu, keywords. Use Slovak. Be brief.";
     const r = await axios.post(
       `${OLLAMA_URL}/api/generate`,
-      {
-        model: "llama3.2:3b",
-        system,
-        prompt: message,
-        stream: false,
-      },
-      { timeout: 15000 }
+      { model: "llama3.2:3b", system, prompt: message, stream: false },
+      { timeout: 12000 }  // 8s max
     );
-
-    const text: string = r.data?.response || "";
+    const text = r.data?.response || "";
     const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return {};
-    try {
-      return JSON.parse(m[0]);
-    } catch {
-      return {};
-    }
+    if (m) return JSON.parse(m[0]);
   } catch (e) {
-    console.error("[contextExtractor] error", e);
-    return {};
+    console.log("[contextExtractor] Ollama timeout, using empty context");
   }
+  return {};
 }
