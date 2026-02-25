@@ -16,6 +16,7 @@ app.use(
       "https://stormlevel.com",
       "https://www.stormlevel.com",
       "http://localhost:5174",
+      "https://api.stormlevel.com",
     ],
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -23,6 +24,10 @@ app.use(
 );
 
 app.use(express.json({ limit: "1mb" }));
+// Root health check
+app.get("/health", (_req: Request, res: Response) => {
+  res.json({ status: "ok" });
+});
 
 // Routes
 app.use("/api", chatRouter);
