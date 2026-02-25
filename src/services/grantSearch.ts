@@ -22,16 +22,17 @@ function buildSearchQuery(context: ExtractedContext): string {
 }
 
 export async function searchGrants(context: ExtractedContext): Promise<GrantResult[]> {
-  const SUPABASE_URL = process.env.SUPABASE_URL || "https://kapgabgnezcurmgcrvif.supabase.co";
+  const SUPABASE_URL = process.env.SUPABASE_URL || "";
   const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
-  if (!SUPABASE_KEY) {
-    console.error("[grantSearch] Missing SUPABASE_KEY");
-    return [];
-  }
-  if (!OPENAI_API_KEY) {
-    console.error("[grantSearch] Missing OPENAI_API_KEY");
+  console.log("[grantSearch] Starting with context:", JSON.stringify(context));
+  console.log("[grantSearch] SUPABASE_URL length:", SUPABASE_URL.length);
+  console.log("[grantSearch] SUPABASE_KEY length:", SUPABASE_KEY.length);
+  console.log("[grantSearch] OPENAI_API_KEY length:", OPENAI_API_KEY.length);
+
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.error("[grantSearch] Missing Supabase credentials");
     return [];
   }
 
@@ -39,25 +40,30 @@ export async function searchGrants(context: ExtractedContext): Promise<GrantResu
 
   try {
     const query = buildSearchQuery(context);
+    console.log("[grantSearch] Query:", query);
 
+    console.log("[grantSearch] Calling OpenAI embeddings...");
     const embeddingRes = await axios.post(
       "https://api.openai.com/v1/embeddings",
       { model: "text-embedding-3-small", input: query },
-      { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` }, timeout: 20000 }
+      { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` }, timeout: 15000 }
     );
+    console.log("[grantSearch] OpenAI OK");
 
     const embedding = embeddingRes.data.data[0].embedding;
 
+    console.log("[grantSearch] Calling Supabase RPC...");
     const { data: chunks, error } = await supabase.rpc("match_call_chunks", {
       query_embedding: embedding,
-      match_threshold: 0.5,
+      match_threshold: 0.4,  // Znížené z 0.5
       match_count: 20,
     });
 
     if (error) {
-      console.error("[grantSearch] RPC error", error);
+      console.error("[grantSearch] RPC error:", error);
       return [];
     }
+    console.log("[grantSearch] Found chunks:", chunks?.length || 0);
 
     const nowIso = new Date().toISOString();
     const seen = new Set<string>();
@@ -78,9 +84,10 @@ export async function searchGrants(context: ExtractedContext): Promise<GrantResu
       });
     }
 
+    console.log("[grantSearch] Returning results:", results.length);
     return results.slice(0, 10);
-  } catch (e) {
-    console.error("[grantSearch] error", e);
+  } catch (e: any) {
+    console.error("[grantSearch] Error:", e.message);
     return [];
   }
 }
