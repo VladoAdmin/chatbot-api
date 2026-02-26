@@ -158,6 +158,7 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
 
     // Fetch geographic attributes for region filtering
     let geoMap = new Map<string, string>();
+    console.log("[grantSearch] Checking region filter:", context.region, "results:", results.length);
     if (context.region && results.length > 0) {
       const resultIds = results.map(r => r.id);
       const { data: geoAttrs, error: geoError } = await supabase
