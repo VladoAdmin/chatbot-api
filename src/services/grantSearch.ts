@@ -112,8 +112,9 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
     // Fetch grant details from grant_calls_v2
     const { data: grants, error: grantsError } = await supabase
       .from("grant_calls_v2")
-      .select("id, title, provider, deadline_at, total_allocation, call_url")
-      .in("id", callIds);
+      .select("id, title, provider, deadline_at, total_allocation, call_url, status")
+      .in("id", callIds)
+      .in("status", ["otvorená", "Otvorená"]);
 
     if (grantsError) {
       console.error("[grantSearch] Error fetching grants:", grantsError);
@@ -141,6 +142,8 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
 
       // Skip if deadline passed
       if (grant.deadline_at && grant.deadline_at < nowIso) continue;
+      // Skip non-open calls (extra guard)
+      if (grant.status && !["otvorená", "Otvorená"].includes(grant.status)) continue;
 
       results.push({
         id: chunk.call_id,
