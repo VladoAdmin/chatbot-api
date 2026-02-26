@@ -34,15 +34,15 @@ export async function extractContext(message: string): Promise<ExtractedContext>
     context.has_sektor = true;
     context.keywords = [...(context.keywords || []), "zateplenie", "úspory energie"];
   }
-  // Extrakcia regiónu
-  if (lower.includes("bratislava")) { context.region = "Bratislavský"; context.has_region = true; }
-  if (lower.includes("košice")) { context.region = "Košický"; context.has_region = true; }
-  if (lower.includes("žilina") || lower.includes("žilinsk")) { context.region = "Žilinský"; context.has_region = true; }
-  if (lower.includes("trnava") || lower.includes("trnavsk")) { context.region = "Trnavský"; context.has_region = true; }
-  if (lower.includes("trenčín") || lower.includes("trenčiansk")) { context.region = "Trenčiansky"; context.has_region = true; }
-  if (lower.includes("nitra") || lower.includes("nitriansk")) { context.region = "Nitriansky"; context.has_region = true; }
-  if (lower.includes("banská bystrica") || lower.includes("banskobystrick")) { context.region = "Banskobystrický"; context.has_region = true; }
-  if (lower.includes("prešov") || lower.includes("prešovsk")) { context.region = "Prešovský"; context.has_region = true; }
+  // Extrakcia regiónu (s rôznymi pádomi)
+  if (lower.includes("bratislav")) { context.region = "Bratislavský"; context.has_region = true; }
+  if (lower.includes("košic")) { context.region = "Košický"; context.has_region = true; }
+  if (lower.includes("žilin")) { context.region = "Žilinský"; context.has_region = true; }
+  if (lower.includes("trnav")) { context.region = "Trnavský"; context.has_region = true; }
+  if (lower.includes("trenčín") || lower.includes("trenčia")) { context.region = "Trenčiansky"; context.has_region = true; }
+  if (lower.includes("nitr")) { context.region = "Nitriansky"; context.has_region = true; }
+  if (lower.includes("bystric")) { context.region = "Banskobystrický"; context.has_region = true; }
+  if (lower.includes("prešov")) { context.region = "Prešovský"; context.has_region = true; }
   
   // Extrakcia typu žiadateľa
   if (lower.includes("firma") || lower.includes("podnik") || lower.includes("spoločnosť") || lower.includes("s.r.o.") || lower.includes("sro") || lower.includes("business")) {
