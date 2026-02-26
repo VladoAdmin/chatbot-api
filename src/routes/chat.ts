@@ -24,16 +24,32 @@ chatRouter.post("/chat", async (req: Request, res: Response) => {
       return;
     }
 
+    const trimmedMessage = message.trim();
+    if (trimmedMessage.length === 0) {
+      res.status(400).json({ error: "Message cannot be empty" });
+      return;
+    }
+
+    if (trimmedMessage.length > 1000) {
+      res.status(400).json({ 
+        error: "Message too long", 
+        message: "Prosím zadajte kratšiu otázku (max 1000 znakov).",
+        limit: 1000,
+        received: trimmedMessage.length
+      });
+      return;
+    }
+
     const sid = sessionId || randomUUID();
 
-    const ctxNew = await extractContext(message);
+    const ctxNew = await extractContext(trimmedMessage);
     const ctxOld = sessions.get(sid) || {};
     const ctx: ExtractedContext = { ...ctxOld, ...ctxNew };
     sessions.set(sid, ctx);
 
     const grants = await searchGrants(ctx);
 
-    const { reply, refinement_options } = await generateResponse(message, grants);
+    const { reply, refinement_options } = await generateResponse(trimmedMessage, grants);
 
     res.json({
       reply,
