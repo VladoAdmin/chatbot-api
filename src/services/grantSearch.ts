@@ -176,6 +176,7 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
       } else {
         geoAttrs?.forEach((g: any) => geoMap.set(g.grant_call_id, g.value));
         console.log("[grantSearch] Fetched geo attrs:", geoAttrs?.length || 0);
+        console.log("[grantSearch] Geo values:", JSON.stringify(geoAttrs?.map((g: any) => ({ id: g.grant_call_id.slice(0, 8), val: g.value.slice(0, 50) }))));
       }
     }
 
