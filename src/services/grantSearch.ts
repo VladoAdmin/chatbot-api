@@ -112,7 +112,7 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
     // Fetch grant details from grant_calls_v2
     const { data: grants, error: grantsError } = await supabase
       .from("grant_calls_v2")
-      .select("id, title, provider, deadline_at, total_allocation, call_url, status")
+      .select("id, title, provider, deadline_at, total_allocation, call_url, status, eligible_applicants")
       .in("id", callIds)
       .in("status", ["otvorená", "Otvorená"]);
 
@@ -128,7 +128,7 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
 
     const nowIso = new Date().toISOString();
     const seen = new Set<string>();
-    const results: GrantResult[] = [];
+    let results: GrantResult[] = [];
 
     for (const chunk of chunks) {
       if (seen.has(chunk.call_id)) continue;
@@ -156,8 +156,52 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
       });
     }
 
-    // Sort by similarity
-    results.sort((a, b) => b.similarity - a.similarity);
+    // Filter by applicant type if specified
+    if (context.applicant_type && results.length > 0) {
+      const eligibleResults = results.filter(r => {
+        const grant = grantMap.get(r.id);
+        if (!grant?.eligible_applicants) return true; // null = open to all
+        const eligible = grant.eligible_applicants.toLowerCase();
+        
+        switch (context.applicant_type) {
+          case "sukromna_firma":
+            return eligible.includes("spoločnosť") || eligible.includes("firma") || 
+                   eligible.includes("podnik") || eligible.includes("s.r.o.");
+          case "obec":
+            return eligible.includes("obec") || eligible.includes("mesto") || 
+                   eligible.includes("samospráva") || eligible.includes("kraj");
+          case "statna_institucia":
+            return eligible.includes("rozpočtová") || eligible.includes("príspevková") || 
+                   eligible.includes("štát") || eligible.includes("ministerstvo");
+          case "neziskovka":
+            return eligible.includes("nezisková") || eligible.includes("združenie") || 
+                   eligible.includes("nadácia") || eligible.includes("organizácia");
+          default:
+            return true;
+        }
+      });
+      
+      // If we have eligible results, use them; otherwise keep all (fallback)
+      if (eligibleResults.length > 0) {
+        results = eligibleResults;
+      }
+    }
+    
+    // Boost grants matching zameranie in title
+    if (context.zameranie) {
+      const zameranieLower = context.zameranie.toLowerCase();
+      results.sort((a, b) => {
+        const aMatch = a.title.toLowerCase().includes(zameranieLower) ? 1 : 0;
+        const bMatch = b.title.toLowerCase().includes(zameranieLower) ? 1 : 0;
+        // If both match or both don't, sort by similarity
+        if (aMatch === bMatch) return b.similarity - a.similarity;
+        // Boost title matches
+        return bMatch - aMatch;
+      });
+    } else {
+      // Sort by similarity only
+      results.sort((a, b) => b.similarity - a.similarity);
+    }
 
     // Fallback: title search for calls without chunks (covers fresh/partial ingests)
     if (rawMessage) {
@@ -173,7 +217,7 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
         const orFilter = tokens.map((t) => `title.ilike.%${t}%`).join(",");
         const { data: titleHits, error: titleErr } = await supabase
           .from("grant_calls_v2")
-          .select("id, title, provider, deadline_at, total_allocation, call_url, status")
+          .select("id, title, provider, deadline_at, total_allocation, call_url, status, eligible_applicants")
           .in("status", ["otvorená", "Otvorená"])
           .or(orFilter)
           .limit(10);
