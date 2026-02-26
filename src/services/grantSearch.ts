@@ -12,16 +12,35 @@ export interface GrantResult {
   similarity: number;
 }
 
-function buildSearchQuery(context: ExtractedContext): string {
+function buildSearchQuery(context: ExtractedContext, rawMessage?: string): string {
   const parts: string[] = [];
   if (context.typ_projektu) parts.push(context.typ_projektu);
   if (context.sektor) parts.push(context.sektor);
   if (context.region) parts.push(context.region);
   if (context.keywords?.length) parts.push(...context.keywords);
-  return parts.join(" ") || "grant podpora financovanie";
+  if (parts.length) return parts.join(" ");
+  // fallback: use user's actual query to avoid extra LLM extraction latency
+  const cleaned = (rawMessage || "").trim().slice(0, 300);
+  return cleaned.length > 0 ? cleaned : "grant podpora financovanie";
 }
 
-export async function searchGrants(context: ExtractedContext): Promise<GrantResult[]> {
+type CacheEntry<T> = { value: T; ts: number };
+
+const EMBEDDING_CACHE = new Map<string, CacheEntry<number[]>>();
+const RESULTS_CACHE = new Map<string, CacheEntry<GrantResult[]>>();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function getFresh<T>(m: Map<string, CacheEntry<T>>, key: string): T | null {
+  const e = m.get(key);
+  if (!e) return null;
+  if (Date.now() - e.ts > CACHE_TTL_MS) {
+    m.delete(key);
+    return null;
+  }
+  return e.value;
+}
+
+export async function searchGrants(context: ExtractedContext, rawMessage?: string): Promise<GrantResult[]> {
   const SUPABASE_URL = process.env.SUPABASE_URL || "";
   const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
@@ -39,24 +58,41 @@ export async function searchGrants(context: ExtractedContext): Promise<GrantResu
   const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
   try {
-    const query = buildSearchQuery(context);
+    const query = buildSearchQuery(context, rawMessage);
     console.log("[grantSearch] Query:", query);
 
-    console.log("[grantSearch] Calling OpenAI embeddings...");
-    const embeddingRes = await axios.post(
-      "https://api.openai.com/v1/embeddings",
-      { model: "text-embedding-3-small", input: query },
-      { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` }, timeout: 15000 }
-    );
-    console.log("[grantSearch] OpenAI OK");
+    const cachedResults = getFresh(RESULTS_CACHE, query);
+    if (cachedResults) {
+      console.log("[grantSearch] Cache hit (results)");
+      return cachedResults;
+    }
 
-    const embedding = embeddingRes.data.data[0].embedding;
+    let embedding: number[] | null = getFresh(EMBEDDING_CACHE, query);
+    if (!embedding) {
+      console.log("[grantSearch] Calling OpenAI embeddings...");
+      const embeddingRes = await axios.post(
+        "https://api.openai.com/v1/embeddings",
+        { model: "text-embedding-3-small", input: query },
+        { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` }, timeout: 8000 }
+      );
+      console.log("[grantSearch] OpenAI OK");
+      const emb: number[] = embeddingRes.data.data[0].embedding;
+      embedding = emb;
+      EMBEDDING_CACHE.set(query, { value: emb, ts: Date.now() });
+    } else {
+      console.log("[grantSearch] Cache hit (embedding)");
+    }
+
+    if (!embedding) {
+      console.error("[grantSearch] Missing embedding (unexpected)");
+      return [];
+    }
 
     console.log("[grantSearch] Calling Supabase RPC...");
     const { data: chunks, error } = await supabase.rpc("match_call_chunks", {
-      query_embedding: embedding,
-      match_threshold: 0.4,  // Znížené z 0.5
-      match_count: 20,
+      query_embedding: embedding as number[],
+      match_threshold: 0.4,
+      match_count: 12,
     });
 
     if (error) {
@@ -84,8 +120,10 @@ export async function searchGrants(context: ExtractedContext): Promise<GrantResu
       });
     }
 
-    console.log("[grantSearch] Returning results:", results.length);
-    return results.slice(0, 10);
+    const finalResults = results.slice(0, 10);
+    console.log("[grantSearch] Returning results:", finalResults.length);
+    RESULTS_CACHE.set(query, { value: finalResults, ts: Date.now() });
+    return finalResults;
   } catch (e: any) {
     console.error("[grantSearch] Error:", e.message);
     return [];

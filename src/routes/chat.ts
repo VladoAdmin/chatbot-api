@@ -47,7 +47,7 @@ chatRouter.post("/chat", async (req: Request, res: Response) => {
     const ctx: ExtractedContext = { ...ctxOld, ...ctxNew };
     sessions.set(sid, ctx);
 
-    const grants = await searchGrants(ctx);
+    const grants = await searchGrants(ctx, trimmedMessage);
 
     const { reply, refinement_options } = await generateResponse(trimmedMessage, grants);
 

@@ -1,6 +1,3 @@
-import axios from "axios";
-
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 
 export interface ExtractedContext {
   sektor?: string;
@@ -19,13 +16,17 @@ export async function extractContext(message: string): Promise<ExtractedContext>
     context.sektor = "poľnohospodárstvo";
     context.keywords = ["poľnohospodárstvo", "agro"];
   }
-  if (lower.includes("it ") || lower.includes("digital") || lower.includes("technol")) {
+  if (lower.includes("it ") || lower.includes("it-bezpe") || lower.includes("kyber") || lower.includes("cyber") || lower.includes("digital") || lower.includes("technol")) {
     context.sektor = "IT";
-    context.keywords = ["digitalizácia", "IT"];
+    context.keywords = ["IT", "kybernetická bezpečnosť", "digitalizácia"];
+  }
+  if (lower.includes("zatepl") || lower.includes("energetick") || lower.includes("tepel") || lower.includes("obnov") || lower.includes("dom")) {
+    context.typ_projektu = "energetická efektívnosť";
+    context.keywords = [...(context.keywords || []), "zateplenie", "úspory energie"];
   }
   if (lower.includes("bratislava")) context.region = "Bratislavský";
   if (lower.includes("košice")) context.region = "Košický";
-  if (lower.includes("žiarna")) context.region = "Žilinský";
+  if (lower.includes("žilina") || lower.includes("žilinsk")) context.region = "Žilinský";
   
   // Ak máme už základ, vrátime okamžite (bez Ollama)
   if (context.sektor || context.region) {
@@ -33,19 +34,7 @@ export async function extractContext(message: string): Promise<ExtractedContext>
     return context;
   }
   
-  // Inak použijeme Ollama ale s krátkym timeoutom
-  try {
-    const system = "Extract JSON with keys: sektor, region, typ_projektu, keywords. Use Slovak. Be brief.";
-    const r = await axios.post(
-      `${OLLAMA_URL}/api/generate`,
-      { model: "llama3.2:3b", system, prompt: message, stream: false },
-      { timeout: 12000 }  // 8s max
-    );
-    const text = r.data?.response || "";
-    const m = text.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
-  } catch (e) {
-    console.log("[contextExtractor] Ollama timeout, using empty context");
-  }
+  // Pre performance (ciel < 5s) nepouzivame LLM extrakciu v request path.
+  // Ak heuristika nic nenasla, vratime prazdny kontext a vyhladavanie pouzije priamo user query.
   return {};
 }
