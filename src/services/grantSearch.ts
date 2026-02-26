@@ -13,15 +13,19 @@ export interface GrantResult {
 }
 
 function buildSearchQuery(context: ExtractedContext, rawMessage?: string): string {
+  // Priority: use raw message as base (it contains user's actual intent)
+  const cleaned = (rawMessage || "").trim().slice(0, 300);
+  if (cleaned.length > 0 && !cleaned.match(/^\s*$/)) {
+    return cleaned;
+  }
+  // fallback to extracted context
   const parts: string[] = [];
   if (context.typ_projektu) parts.push(context.typ_projektu);
   if (context.sektor) parts.push(context.sektor);
   if (context.region) parts.push(context.region);
   if (context.keywords?.length) parts.push(...context.keywords);
   if (parts.length) return parts.join(" ");
-  // fallback: use user's actual query to avoid extra LLM extraction latency
-  const cleaned = (rawMessage || "").trim().slice(0, 300);
-  return cleaned.length > 0 ? cleaned : "grant podpora financovanie";
+  return "grant podpora financovanie";
 }
 
 type CacheEntry<T> = { value: T; ts: number };
