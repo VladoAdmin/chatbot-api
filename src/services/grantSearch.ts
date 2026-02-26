@@ -184,24 +184,33 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
     if (context.region && results.length > 0) {
       const regionLower = context.region.toLowerCase();
       const regionResults = results.filter(r => {
+        // Check geographic attribute first
         const geo = geoMap.get(r.id);
-        if (!geo) return true; // No geo restriction = open to all
-        const geoLower = geo.toLowerCase();
-        
-        // Explicit exclusion patterns
-        if (geoLower.includes("okrem") && geoLower.includes(regionLower)) {
-          return false; // Explicitly excluded
+        if (geo) {
+          const geoLower = geo.toLowerCase();
+          // Explicit exclusion patterns in geo attribute
+          if (geoLower.includes("okrem") && geoLower.includes(regionLower)) {
+            return false; // Explicitly excluded
+          }
+          // Inclusion patterns
+          if (geoLower.includes("celé sr") || geoLower.includes("územie sr")) {
+            return true; // Whole Slovakia
+          }
+          if (geoLower.includes(regionLower)) {
+            return true; // Region explicitly mentioned
+          }
         }
         
-        // Inclusion patterns
-        if (geoLower.includes("celé sr") || geoLower.includes("územie sr")) {
-          return true; // Whole Slovakia
+        // Check title for exclusion patterns (e.g., "mimo BSK", "okrem Bratislavského")
+        const titleLower = r.title.toLowerCase();
+        if (titleLower.includes("mimo") && titleLower.includes("bsk")) {
+          return false; // Excludes Bratislava region
         }
-        if (geoLower.includes(regionLower)) {
-          return true; // Region explicitly mentioned
+        if (titleLower.includes("okrem") && (titleLower.includes("bratislav") || titleLower.includes("bsk"))) {
+          return false; // Excludes Bratislava region
         }
         
-        return true; // Default include if unclear
+        return true; // Include if no exclusion found
       });
       
       // If region filter produces results, use them; otherwise warn but keep all
