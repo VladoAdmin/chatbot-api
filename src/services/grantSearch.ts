@@ -156,6 +156,56 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
       });
     }
 
+    // Fetch geographic attributes for region filtering
+    let geoMap = new Map<string, string>();
+    if (context.region && results.length > 0) {
+      const resultIds = results.map(r => r.id);
+      const { data: geoAttrs, error: geoError } = await supabase
+        .from("grant_call_attributes")
+        .select("grant_call_id, value")
+        .eq("key", "Miesto realizácie")
+        .in("grant_call_id", resultIds);
+      
+      if (geoError) {
+        console.error("[grantSearch] Error fetching geo attrs:", geoError);
+      } else {
+        geoAttrs?.forEach((g: any) => geoMap.set(g.grant_call_id, g.value));
+        console.log("[grantSearch] Fetched geo attrs:", geoAttrs?.length || 0);
+      }
+    }
+
+    // Filter by region if specified
+    if (context.region && results.length > 0) {
+      const regionLower = context.region.toLowerCase();
+      const regionResults = results.filter(r => {
+        const geo = geoMap.get(r.id);
+        if (!geo) return true; // No geo restriction = open to all
+        const geoLower = geo.toLowerCase();
+        
+        // Explicit exclusion patterns
+        if (geoLower.includes("okrem") && geoLower.includes(regionLower)) {
+          return false; // Explicitly excluded
+        }
+        
+        // Inclusion patterns
+        if (geoLower.includes("celé sr") || geoLower.includes("územie sr")) {
+          return true; // Whole Slovakia
+        }
+        if (geoLower.includes(regionLower)) {
+          return true; // Region explicitly mentioned
+        }
+        
+        return true; // Default include if unclear
+      });
+      
+      // If region filter produces results, use them; otherwise warn but keep all
+      if (regionResults.length > 0) {
+        results = regionResults;
+      } else {
+        console.log("[grantSearch] Warning: Region filter excluded all results, showing all");
+      }
+    }
+
     // Filter by applicant type if specified
     if (context.applicant_type && results.length > 0) {
       const eligibleResults = results.filter(r => {
