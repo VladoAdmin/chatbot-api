@@ -43,6 +43,7 @@ chatRouter.post("/chat", async (req: Request, res: Response) => {
     const sid = sessionId || randomUUID();
 
     const ctxNew = await extractContext(trimmedMessage);
+    console.log("[chat] Extracted context:", JSON.stringify(ctxNew));
     const ctxOld = sessions.get(sid) || {};
     const ctx: ExtractedContext = { ...ctxOld, ...ctxNew };
     sessions.set(sid, ctx);
