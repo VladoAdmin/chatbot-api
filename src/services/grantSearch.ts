@@ -101,24 +101,60 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
     }
     console.log("[grantSearch] Found chunks:", chunks?.length || 0);
 
+    if (!chunks || chunks.length === 0) {
+      return [];
+    }
+
+    // Get unique call_ids from chunks
+    const callIds = [...new Set(chunks.map((c: any) => c.call_id))];
+    console.log("[grantSearch] Unique call_ids:", callIds.length);
+
+    // Fetch grant details from grant_calls_v2
+    const { data: grants, error: grantsError } = await supabase
+      .from("grant_calls_v2")
+      .select("id, title, provider, deadline_at, total_allocation, call_url")
+      .in("id", callIds);
+
+    if (grantsError) {
+      console.error("[grantSearch] Error fetching grants:", grantsError);
+      return [];
+    }
+
+    console.log("[grantSearch] Fetched grants:", grants?.length || 0);
+
+    // Create lookup map
+    const grantMap = new Map(grants?.map((g: any) => [g.id, g]) || []);
+
     const nowIso = new Date().toISOString();
     const seen = new Set<string>();
     const results: GrantResult[] = [];
 
-    for (const chunk of chunks || []) {
-      if (chunk.deadline_at && chunk.deadline_at < nowIso) continue;
+    for (const chunk of chunks) {
       if (seen.has(chunk.call_id)) continue;
       seen.add(chunk.call_id);
+
+      const grant = grantMap.get(chunk.call_id);
+      if (!grant) {
+        console.log("[grantSearch] Grant not found for call_id:", chunk.call_id);
+        continue;
+      }
+
+      // Skip if deadline passed
+      if (grant.deadline_at && grant.deadline_at < nowIso) continue;
+
       results.push({
         id: chunk.call_id,
-        title: chunk.title,
-        deadline_at: chunk.deadline_at,
-        total_allocation: chunk.total_allocation,
-        provider: chunk.provider,
-        call_url: chunk.call_url,
+        title: grant.title || "Neznáma výzva",
+        deadline_at: grant.deadline_at,
+        total_allocation: grant.total_allocation,
+        provider: grant.provider || "Neznámy poskytovateľ",
+        call_url: grant.call_url || "#",
         similarity: chunk.similarity,
       });
     }
+
+    // Sort by similarity
+    results.sort((a, b) => b.similarity - a.similarity);
 
     const finalResults = results.slice(0, 10);
     console.log("[grantSearch] Returning results:", finalResults.length);
