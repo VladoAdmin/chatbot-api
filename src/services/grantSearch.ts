@@ -159,6 +159,45 @@ export async function searchGrants(context: ExtractedContext, rawMessage?: strin
     // Sort by similarity
     results.sort((a, b) => b.similarity - a.similarity);
 
+    // Fallback: title search for calls without chunks (covers fresh/partial ingests)
+    if (rawMessage) {
+      const tokens = rawMessage
+        .toLowerCase()
+        .replace(/[^\p{L}0-9\s]/gu, " ")
+        .split(/\s+/)
+        .map((t) => t.trim())
+        .filter((t) => t.length >= 4)
+        .slice(0, 2);
+
+      if (tokens.length > 0) {
+        const orFilter = tokens.map((t) => `title.ilike.%${t}%`).join(",");
+        const { data: titleHits, error: titleErr } = await supabase
+          .from("grant_calls_v2")
+          .select("id, title, provider, deadline_at, total_allocation, call_url, status")
+          .in("status", ["otvorená", "Otvorená"])
+          .or(orFilter)
+          .limit(10);
+
+        if (titleErr) {
+          console.error("[grantSearch] Title search error:", titleErr);
+        } else if (titleHits && titleHits.length > 0) {
+          for (const g of titleHits) {
+            if (seen.has(g.id)) continue;
+            seen.add(g.id);
+            results.push({
+              id: g.id,
+              title: g.title || "Neznáma výzva",
+              deadline_at: g.deadline_at,
+              total_allocation: g.total_allocation,
+              provider: g.provider || "Neznámy poskytovateľ",
+              call_url: g.call_url || "#",
+              similarity: 0,
+            });
+          }
+        }
+      }
+    }
+
     const finalResults = results.slice(0, 10);
     console.log("[grantSearch] Returning results:", finalResults.length);
     RESULTS_CACHE.set(query, { value: finalResults, ts: Date.now() });
