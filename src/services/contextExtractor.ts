@@ -89,8 +89,8 @@ export async function extractContext(message: string): Promise<ExtractedContext>
     context.has_zameranie = context.has_zameranie || context.zameranie !== undefined;
   }
   
-  // Ak máme už základ, vrátime okamžite (bez Ollama)
-  if (context.sektor || context.region) {
+  // Ak máme už základ (ktorýkoľvek z dimenzií), vrátime okamžite (bez Ollama)
+  if (context.sektor || context.region || context.applicant_type || context.zameranie) {
     console.log("[contextExtractor] Fast heuristic match:", context);
     return context;
   }
